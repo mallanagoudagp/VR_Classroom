@@ -1,0 +1,512 @@
+[
+  {
+    "id": "TC001",
+    "title": "Play and pause controls start and stop lesson playback",
+    "description": "Verifies a student can start playback in the lesson view and then pause it with playback state remaining consistent.",
+    "category": "Lesson Interaction",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Click a lesson in the recommended lessons list"
+      },
+      {
+        "type": "action",
+        "description": "Press play on lesson content to start playback"
+      },
+      {
+        "type": "action",
+        "description": "Press pause on lesson content to stop playback"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify lesson playback is paused"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the playback state is consistent and does not continue advancing"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC002",
+    "title": "First-time onboarding completion routes to personalized dashboard",
+    "description": "Verifies a new student can complete all onboarding selections and is routed to the dashboard where personalized recommendations and progress are shown.",
+    "category": "Onboarding Setup",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user lands on the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify personalized recommendations and a progress summary are displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC003",
+    "title": "Returning user is routed from entry to dashboard without onboarding",
+    "description": "Verifies that after onboarding is completed once, revisiting the entry route skips onboarding and goes directly to the dashboard.",
+    "category": "Onboarding Setup",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user lands on the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify onboarding is not shown"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC004",
+    "title": "Open a recommended lesson from dashboard into lesson player",
+    "description": "Verifies a student can open a recommended lesson from the dashboard and reach the lesson player with details and controls available.",
+    "category": "Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Click a lesson in the recommended lessons list"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user lands on the lesson view"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify lesson details and playback controls are displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC005",
+    "title": "Dashboard displays personalized progress summary and recommended lessons",
+    "description": "Verifies the dashboard renders the core personalized sections after a student profile is created.",
+    "category": "Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a progress summary is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a list of recommended lessons is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC006",
+    "title": "Resume a recent lesson from dashboard into lesson player",
+    "description": "Verifies a student can select a lesson from the recent lessons list and is taken to the lesson view to continue it.",
+    "category": "Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Click a lesson in the recommended lessons list"
+      },
+      {
+        "type": "action",
+        "description": "Click the navigation control to return to the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Click the lesson in the recent lessons list to resume it"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user lands on the lesson view"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the lesson player is ready to continue the lesson"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC007",
+    "title": "Set difficulty before playback and start lesson with selected level",
+    "description": "Verifies a student can choose a difficulty level before starting playback and the lesson reflects that difficulty setting.",
+    "category": "Lesson Interaction",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Click a lesson in the recommended lessons list"
+      },
+      {
+        "type": "action",
+        "description": "Turn on a difficulty setting to pick an explanation level"
+      },
+      {
+        "type": "action",
+        "description": "Press play on lesson content to start playback"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify lesson playback starts"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the lesson explanation reflects the selected difficulty level"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC008",
+    "title": "Recently viewed lesson appears on dashboard after leaving lesson view",
+    "description": "Verifies that viewing a lesson causes it to appear in the dashboard’s recent lessons list after returning to the dashboard.",
+    "category": "Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Click a lesson in the recommended lessons list"
+      },
+      {
+        "type": "action",
+        "description": "Click the navigation control to return to the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a recent lessons list is displayed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the recently viewed lesson is present in the recent lessons list"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC009",
+    "title": "Adjust difficulty during playback updates explanation without breaking playback",
+    "description": "Verifies a student can toggle difficulty while the lesson is playing and the explanation updates in real time without interrupting playback.",
+    "category": "Lesson Interaction",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select a State"
+      },
+      {
+        "type": "action",
+        "description": "Select a Curriculum Board"
+      },
+      {
+        "type": "action",
+        "description": "Select a Grade"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to advance to the next onboarding step"
+      },
+      {
+        "type": "action",
+        "description": "Select at least one favourite subject"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Click a lesson in the recommended lessons list"
+      },
+      {
+        "type": "action",
+        "description": "Press play on lesson content to start playback"
+      },
+      {
+        "type": "action",
+        "description": "Turn on/off the difficulty setting while playback is active"
+      },
+      {
+        "type": "action",
+        "description": "Press pause on lesson content to stop playback"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the lesson explanation updates to match the new difficulty during playback"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify playback remains functional and ends in a paused state"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC010",
+    "title": "Onboarding required-field validation blocks submission until completed",
+    "description": "Verifies onboarding cannot be submitted with missing required fields and proceeds successfully after the missing selections are completed.",
+    "category": "Onboarding Setup",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /"
+      },
+      {
+        "type": "action",
+        "description": "Select only one required onboarding field"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to submit onboarding"
+      },
+      {
+        "type": "action",
+        "description": "Complete the missing required selections"
+      },
+      {
+        "type": "action",
+        "description": "Submit onboarding to finish onboarding"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify required-field validation errors are shown for missing fields"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user lands on the dashboard"
+      }
+    ],
+    "priority": "Low"
+  }
+]
