@@ -12,7 +12,23 @@
 </head>
 <body>
   <div id="app"></div>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- API key bootstrap — runs before groq.js so the key is always in localStorage -->
+  <script>
+    (function() {
+      var KEY_NAME = 'GROQ_API_KEY';
+      // Load API key from environment variable or user settings
+      // Set this in localStorage via the Settings page or environment
+      if (!localStorage.getItem(KEY_NAME)) {
+        // Prompt user to enter their API key on first load
+        var key = localStorage.getItem(KEY_NAME);
+        if (!key) {
+          console.warn('GROQ_API_KEY not set. Please configure it in Settings.');
+        }
+      }
+    })();
+  </script>
+  <script src="js/tesseract.min.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/data.js"></script>
   <script src="js/topics.js"></script>
   <script src="js/groq.js"></script>

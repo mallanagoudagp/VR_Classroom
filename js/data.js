@@ -53,22 +53,6 @@ const DATA = {
     { label: 'Animating with Manim engine', icon: '🎬' },
     { label: 'Generating narration & merging audio', icon: '🔊' },
   ],
-  students: [
-    { initials: 'AM', name: 'Alex Martinez', active: '2m ago', grade: 88, trend: 'up', focus: ['Calculus', 'Logic'], interventions: '12 adaptive steps', color: '#3b82f6' },
-    { initials: 'SW', name: 'Sophia Wong', active: '1h ago', grade: 42, trend: 'down', focus: ['Recursion', 'Syntax'], interventions: 'Critical (3 prompts)', color: '#ef4444', critical: true },
-    { initials: 'JK', name: 'Jordan Klein', active: '5m ago', grade: 96, trend: 'up', focus: ['Adv Physics'], interventions: 'Auto-Advanced', color: '#10b981' },
-    { initials: 'PR', name: 'Priya Rajan', active: '3h ago', grade: 71, trend: 'stable', focus: ['Thermodynamics'], interventions: '4 adaptive steps', color: '#8b5cf6' },
-  ],
-  heatMap: [
-    { pct: 94, color: '#1e40af' }, { pct: 82, color: '#2563eb' }, { pct: 65, color: '#93c5fd' },
-    { pct: 34, color: '#ef4444' }, { pct: 51, color: '#60a5fa' },
-    { pct: 78, color: '#3b82f6' }, { pct: 88, color: '#1d4ed8' }, { pct: 45, color: '#f59e0b' },
-    { pct: 91, color: '#1e40af' }, { pct: 67, color: '#93c5fd' },
-  ],
-  commonQuestions: [
-    { type: 'TOP QUERY', students: 12, text: '"Can you explain gradient descent using a visual analogy?"' },
-    { type: 'TOPIC GAP', students: 8, text: '"What is the difference between supervised and unsupervised learning?"' },
-  ],
 
   // ── UNDERSTANDING PREDICTOR DATA ──
   // Agent 2 — Vocabulary scores per subject (0–1 scale, scaled ×0.5 in formula)
@@ -162,8 +146,15 @@ const DATA = {
   historyItems: [],
 };
 
-// ── LOCALSTORAGE PERSISTENCE ──
-const PERSIST_KEY = 'vidscholar_scores_v3';
+// ── LOCALSTORAGE PERSISTENCE (per-user) ──
+// Key is dynamic — reads current logged-in user from AUTH_SESSION_KEY
+function getPersistKey() {
+  try {
+    const session = localStorage.getItem('vidscholar_session_v1');
+    if (session) return `vidscholar_scores_v3_${session}`;
+  } catch {}
+  return 'vidscholar_scores_v3_guest';
+}
 
 function saveScoresToStorage() {
   try {
@@ -174,17 +165,23 @@ function saveScoresToStorage() {
       subjectAffinity: DATA.subjectAffinity,
       recentTrend: DATA.recentTrend,
       favoriteSubject: DATA.user.subject,
+      userName: DATA.user.name,
+      userGrade: DATA.user.grade,
+      userBoard: DATA.user.board,
+      userState: DATA.user.state,
       learningHours: DATA.user.learningHours,
       sessionCount: DATA.user.sessionCount,
-      historyItems: DATA.historyItems.slice(0, 20),
-      recentTopics: DATA.recentTopics.slice(0, 4),
+      historyItems: DATA.historyItems.slice(0, 50),
+      recentTopics: DATA.recentTopics.slice(0, 8),
       weeklyActivity: DATA.weeklyActivity,
       subjectModes: DATA.subjectModes,
       calibrationStreaks: DATA.calibrationStreaks,
       selfGuessedScores: DATA.selfGuessedScores,
       lastLlmGuesses: DATA.lastLlmGuesses,
+      chatHistory: DATA.chatHistory,
+      onboardingDone: true,
     };
-    localStorage.setItem(PERSIST_KEY, JSON.stringify(payload));
+    localStorage.setItem(getPersistKey(), JSON.stringify(payload));
   } catch(e) {
     console.warn('VidScholar: Failed to save scores to localStorage', e);
   }
@@ -192,7 +189,7 @@ function saveScoresToStorage() {
 
 function loadScoresFromStorage() {
   try {
-    const raw = localStorage.getItem(PERSIST_KEY);
+    const raw = localStorage.getItem(getPersistKey());
     if (!raw) return false;
     const payload = JSON.parse(raw);
     if (payload.agentScores) Object.assign(DATA.agentScores, payload.agentScores);
@@ -201,18 +198,56 @@ function loadScoresFromStorage() {
     if (payload.subjectAffinity) Object.assign(DATA.subjectAffinity, payload.subjectAffinity);
     if (payload.recentTrend) Object.assign(DATA.recentTrend, payload.recentTrend);
     if (payload.favoriteSubject) DATA.user.subject = payload.favoriteSubject;
+    if (payload.userName) DATA.user.name = payload.userName;
+    if (payload.userGrade) DATA.user.grade = payload.userGrade;
+    if (payload.userBoard) DATA.user.board = payload.userBoard;
+    if (payload.userState) DATA.user.state = payload.userState;
     if (payload.learningHours != null) DATA.user.learningHours = payload.learningHours;
     if (payload.sessionCount != null) DATA.user.sessionCount = payload.sessionCount;
     if (payload.historyItems) DATA.historyItems = payload.historyItems;
     if (payload.recentTopics) DATA.recentTopics = payload.recentTopics;
-    if (payload.weeklyActivity) Object.assign(DATA.weeklyActivity, payload.weeklyActivity);
+    if (payload.weeklyActivity && Array.isArray(payload.weeklyActivity)) DATA.weeklyActivity = payload.weeklyActivity;
     if (payload.subjectModes) Object.assign(DATA.subjectModes, payload.subjectModes);
     if (payload.calibrationStreaks) Object.assign(DATA.calibrationStreaks, payload.calibrationStreaks);
     if (payload.selfGuessedScores) Object.assign(DATA.selfGuessedScores, payload.selfGuessedScores);
     if (payload.lastLlmGuesses) Object.assign(DATA.lastLlmGuesses, payload.lastLlmGuesses);
-    return true;
+    if (payload.chatHistory) {
+      Object.assign(DATA.chatHistory, payload.chatHistory);
+    }
+    return payload.onboardingDone === true;
   } catch(e) {
     console.warn('VidScholar: Failed to load scores from localStorage', e);
     return false;
   }
+}
+
+/**
+ * Resets all DATA fields to defaults (used on logout / new user)
+ */
+function resetDataToDefaults() {
+  DATA.user.name = '';
+  DATA.user.grade = 10;
+  DATA.user.board = 'CBSE';
+  DATA.user.state = 'Karnataka';
+  DATA.user.subject = 'Physics';
+  DATA.user.learningHours = 0;
+  DATA.user.sessionCount = 0;
+  DATA.historyItems = [];
+  DATA.recentTopics = [];
+  DATA.chatHistory = { Physics: [], Maths: [], Chemistry: [], Biology: [] };
+  DATA.weeklyActivity = [
+    { day: 'M', h: 0 }, { day: 'T', h: 0 }, { day: 'W', h: 0 }, { day: 'T', h: 0 },
+    { day: 'F', h: 0 }, { day: 'S', h: 0 }, { day: 'S', h: 0 },
+  ];
+  ['Physics', 'Maths', 'Chemistry', 'Biology'].forEach(s => {
+    DATA.agentScores[s] = 0.10;
+    DATA.vocabularyScores[s] = 0.50;
+    DATA.actionChipDelta[s] = 0;
+    DATA.subjectAffinity[s] = 0.10;
+    DATA.recentTrend[s] = 0.00;
+    DATA.subjectModes[s] = 'AgentModel';
+    DATA.calibrationStreaks[s] = 0;
+    DATA.selfGuessedScores[s] = 0.10;
+    DATA.lastLlmGuesses[s] = null;
+  });
 }

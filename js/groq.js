@@ -1,16 +1,25 @@
-// ── LLM INTEGRATION (Groq API — LLaMA 3.3 70B) ──
-const GROQ_API_KEY = localStorage.getItem('GROQ_API_KEY') || '';
+// ── LLM INTEGRATION (Groq API — llama-3.3-70b-versatile) ──
+// NOTE: NVIDIA NIM blocks browser CORS requests. Groq serves the same model and allows browser fetch.
+function getApiKey() { return localStorage.getItem('GROQ_API_KEY') || ''; }
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL    = 'llama-3.3-70b-versatile';
 
 /**
  * Calls Groq LLM with the student's question and returns a structured lesson blueprint.
  * Pipeline: Student Question → Input Preprocessing → Pedagogical Prompt → LLM → Lesson Blueprint
+ *
+ * The system prompt now teaches the LLM about VidScholar's instruction-driven visual
+ * architecture: every scene carries a `visual` descriptor that the renderer interprets
+ * to draw physics, chemistry, maths, and biology primitives on a percentage-based canvas.
  */
 async function callGroqForLesson(question, subject, grade, board, difficultyLevel) {
-  if (!GROQ_API_KEY || GROQ_API_KEY.trim() === '') {
-    console.warn('Groq API Key is not set. Falling back to offline local blueprint generator.');
+  const GROQ_API_KEY = getApiKey();
+  if (!GROQ_API_KEY) {
+    console.info('Groq API Key is not set. Falling back to offline local blueprint generator.');
     return null;
   }
+
+  // ── Persona calibration based on difficulty ──
   let personaInstruction = "Target an intermediate student who has basic familiarity but needs core conceptual linking.";
   if (difficultyLevel === 'Start from scratch') {
     personaInstruction = "Assume the student is a total beginner with ZERO prior knowledge. Use extremely simple fundamental analogies, the simplest language possible, and focus entirely on foundational building blocks.";
@@ -18,79 +27,282 @@ async function callGroqForLesson(question, subject, grade, board, difficultyLeve
     personaInstruction = "Assume the student is highly advanced. Skip basic introductions. Jump straight into granular details, specific interactions, advanced formulas, and nuanced applications.";
   }
 
-  const systemPrompt = `You are VidScholar AI, a pedagogical lesson blueprint generator for Indian students.
+  // ── Subject-aware visual guidance ──
+  let subjectGuidance = '';
+  let preferredBackground = 'dark';
+  const subjectLower = (subject || '').toLowerCase();
 
-CONTEXT:
-- Student Board: ${board}
-- Grade: Class ${grade}
-- Subject: ${subject}
-- Difficulty Level: ${difficultyLevel}
-- Curriculum: NCERT aligned
-- Persona Targeting: ${personaInstruction}
+  if (subjectLower.includes('physics')) {
+    subjectGuidance = `SUBJECT VISUAL GUIDANCE (Physics):
+Prefer these object kinds: force-arrow, wave, orbit-system, pendulum, spring, lens, circuit, projectile.
+Supplement with: rectangle, arrow, callout, icon-label, text-block.`;
+    preferredBackground = 'space';
+  } else if (subjectLower.includes('chemistry')) {
+    subjectGuidance = `SUBJECT VISUAL GUIDANCE (Chemistry):
+Prefer these object kinds: atom, molecule, reaction-arrow, periodic-element, energy-diagram, state-change.
+Supplement with: rectangle, arrow, callout, icon-label, text-block.`;
+    preferredBackground = 'lab';
+  } else if (subjectLower.includes('math')) {
+    subjectGuidance = `SUBJECT VISUAL GUIDANCE (Mathematics):
+Prefer these object kinds: graph-curve, number-line, geometric-shape, matrix, venn-diagram, bar-chart, proof-step.
+Supplement with: rectangle, arrow, callout, icon-label, text-block.`;
+    preferredBackground = 'grid';
+  } else if (subjectLower.includes('bio')) {
+    subjectGuidance = `SUBJECT VISUAL GUIDANCE (Biology):
+Prefer these object kinds: cell, dna-helix, food-chain.
+Supplement with: rectangle, arrow, callout, icon-label, text-block.`;
+    preferredBackground = 'organic';
+  } else {
+    subjectGuidance = `SUBJECT VISUAL GUIDANCE (General):
+Use any object kinds that best illustrate the concept. Universal kinds (rectangle, arrow, callout, icon-label, text-block, image-placeholder) work for every subject.`;
+    preferredBackground = 'dark';
+  }
 
-TASK: Given the student's question, generate a structured lesson blueprint with a SCENE-BY-SCENE breakdown for creating an animated educational video.
+  // ──────────────────────────────────────────────────────────────
+  //  SYSTEM PROMPT — Instruction-Driven Visual Architecture
+  // ──────────────────────────────────────────────────────────────
+  const systemPrompt = `You are VidScholar AI, a pedagogical lesson-blueprint generator for Indian students.
+Your output drives an INSTRUCTION-DRIVEN VISUAL RENDERER — every scene you produce is translated directly into animated canvas graphics. You must therefore describe visuals precisely using the schema below.
 
-You MUST respond with ONLY valid JSON. Use this exact structure:
+═══════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════
+• Student Board : ${board}
+• Grade         : Class ${grade}
+• Subject       : ${subject}
+• Difficulty    : ${difficultyLevel}
+• Curriculum    : NCERT-aligned
+• Persona       : ${personaInstruction}
+
+═══════════════════════════════════════════
+COORDINATE SYSTEM — IMPORTANT
+═══════════════════════════════════════════
+ALL x, y, w, h values are in PERCENTAGE of the canvas (0–100).
+  x=0  → left edge        x=100 → right edge
+  y=0  → top edge         y=100 → bottom edge
+  w=50 → half canvas width   h=30 → 30 % of canvas height
+This makes layouts fully responsive across screen sizes. Never use pixel values.
+
+═══════════════════════════════════════════
+TOP-LEVEL JSON SCHEMA (your full response)
+═══════════════════════════════════════════
 {
   "videoTitle": "Concise title (max 60 chars)",
   "duration": "total duration like 0:45",
   "keyPoints": ["point 1", "point 2", "point 3", "point 4"],
   "concept": "Clear 2-3 sentence explanation of the core concept",
-  "colorTheme": "one of: blue, green, purple, amber, red",
-  "difficulty": "one of: beginner, intermediate, advanced",
-  "self_guessed_confidence": "integer between 0-100 guessing the student's mastery of the subject based on their prompt/history",
+  "colorTheme": "blue | green | purple | amber | red",
+  "difficulty": "beginner | intermediate | advanced",
+  "self_guessed_confidence": 50,
   "followUp": "A suggested follow-up question",
-  "scenes": [
-    {
-      "id": 1,
-      "title": "Scene title (e.g. Introduction)",
-      "narration": "What the narrator says during this scene (2-3 sentences, natural spoken style)",
-      "visualType": "one of: graph, diagram, equation, process, structure, comparison, wave, circuit, orbit, timeline",
-      "elements": ["element1", "element2", "element3", "element4"],
-      "formula": "key formula shown in this scene (optional, can be empty string)",
-      "durationSec": 8
-    }
-  ]
+  "scenes": [ ...scene objects (see below)... ]
 }
 
-SCENE RULES:
-- Generate exactly 5-7 scenes that build up the concept step by step
-- Each scene should have 6-10 seconds duration (durationSec)
-- Total video should be 35-55 seconds
-- Scene narration should be conversational and easy to understand
-- First scene: Introduction/hook to grab attention
-- Middle scenes: Build up the concept with visuals
-- Last scene: Summary/conclusion with key takeaway
-- Each scene should use the most appropriate visualType for its content
-- Elements array should contain 3-5 key labels/terms for that scene
-- Formula can be empty string if no formula is relevant for that scene
+═══════════════════════════════════════════
+SCENE SCHEMA
+═══════════════════════════════════════════
+Each element of the "scenes" array:
+{
+  "id": 1,
+  "title": "Scene Title",
+  "narration": "What the narrator says (2-3 sentences, natural spoken style)",
+  "durationSec": 9,
+  "formula": "F = ma",
+  "visual": {
+    "layout": "centered | left-right-split | top-bottom | fullscreen",
+    "background": "space | lab | grid | organic | dark",
+    "objects": [
+      { "kind": "...", ...kind-specific properties }
+    ],
+    "annotations": [
+      { "text": "...", "x": 50, "y": 90, "highlight": true, "pointsTo": "object-label" }
+    ],
+    "animation": "sequential | simultaneous | staggered"
+  }
+}
 
-RULES:
-- Based solely on the chat history and the user's current query, automatically guess the student's confidence score (0-100). If they say 'I didn't understand' or switch topics abruptly, drastically lower it. Return this integer under the JSON key self_guessed_confidence.
-- Tailor vocabulary and depth to Class ${grade} ${board} level
-- Keep keyPoints concise (max 15 words each)
-- Be pedagogically sound and curriculum-aligned
-- Narration should sound like a friendly teacher explaining`;
+═══════════════════════════════════════════
+DRAWABLE OBJECT KINDS — ALL 25+ KINDS
+═══════════════════════════════════════════
+You MUST use the exact "kind" strings below. Include only the properties listed for each kind.
 
-  // Compile conversation history for context (up to last 2 AI/User interactions, skipping the current prompt just pushed)
+─── PHYSICS PRIMITIVES ───
+1.  force-arrow
+    { kind:"force-arrow", label, direction:"up|down|left|right", magnitude, color, x, y }
+2.  projectile
+    { kind:"projectile", label, startX, startY, angle, velocity, color }
+3.  wave
+    { kind:"wave", label, amplitude, frequency, color, y, phase }
+4.  circuit
+    { kind:"circuit", components:["battery","resistor","bulb","switch"], labels:[] }
+5.  orbit-system
+    { kind:"orbit-system", centralBody, orbitals:[{label, radius, color, speed}] }
+6.  pendulum
+    { kind:"pendulum", label, angle, length, color }
+7.  spring
+    { kind:"spring", label, compression:"compressed|extended|natural", x, y }
+8.  lens
+    { kind:"lens", lensType:"convex|concave", showRays:true, label }
+
+─── CHEMISTRY PRIMITIVES ───
+9.  atom
+    { kind:"atom", element, symbol, atomicNumber, showOrbitals:true }
+10. molecule
+    { kind:"molecule", name, atoms:[{symbol, x, y}], bonds:[{from, to, type:"single|double|triple"}] }
+11. reaction-arrow
+    { kind:"reaction-arrow", reactants:["H2","O2"], products:["H2O"], label }
+12. periodic-element
+    { kind:"periodic-element", symbol, name, atomicNumber, atomicMass, category }
+13. energy-diagram
+    { kind:"energy-diagram", reactantLevel, productLevel, activationEnergy, label }
+14. state-change
+    { kind:"state-change", states:["solid","liquid","gas"], activeState, label }
+
+─── MATHS PRIMITIVES ───
+15. graph-curve
+    { kind:"graph-curve", curveType:"parabola|sine|cosine|exponential|logarithm|linear|cubic", color, label, highlights:[{x, label}] }
+16. number-line
+    { kind:"number-line", min, max, points:[{value, label, color}] }
+17. geometric-shape
+    { kind:"geometric-shape", shape:"triangle|circle|square|polygon", labels:{sides:[], angles:[]}, color }
+18. matrix
+    { kind:"matrix", rows:[[1,2],[3,4]], label }
+19. venn-diagram
+    { kind:"venn-diagram", setA:"Set A", setB:"Set B", intersection:"A ∩ B", color }
+20. bar-chart
+    { kind:"bar-chart", bars:[{label, value, color}], axisLabel }
+21. proof-step
+    { kind:"proof-step", steps:["Step 1: ...", "Step 2: ..."], highlight:0 }
+
+─── BIOLOGY PRIMITIVES ───
+22. cell
+    { kind:"cell", cellType:"eukaryotic|prokaryotic", organelles:["nucleus","mitochondria","ribosome"], label }
+23. dna-helix
+    { kind:"dna-helix", label, basePairs:["A-T","G-C","T-A"], animation:"unwind|rotate|build-in" }
+24. food-chain
+    { kind:"food-chain", organisms:["Grass","Rabbit","Fox","Eagle"], label }
+
+─── UNIVERSAL PRIMITIVES (any subject) ───
+25. rectangle
+    { kind:"rectangle", label, x, y, w, h, color, glow:true }
+26. arrow
+    { kind:"arrow", fromX, fromY, toX, toY, label, color, dashed:false }
+27. callout
+    { kind:"callout", text, x, y, pointsToX, pointsToY }
+28. icon-label
+    { kind:"icon-label", icon:"emoji", label, x, y }
+29. text-block
+    { kind:"text-block", text, x, y, fontSize, color }
+30. image-placeholder
+    { kind:"image-placeholder", label, x, y, w, h, color }
+
+═══════════════════════════════════════════
+${subjectGuidance}
+═══════════════════════════════════════════
+
+BACKGROUND FIELD GUIDANCE:
+• Physics topics   → "space"
+• Chemistry topics → "lab"
+• Mathematics      → "grid"
+• Biology          → "organic"
+• General/unknown  → "dark"
+Default for this subject: "${preferredBackground}"
+
+═══════════════════════════════════════════
+SCENE RULES
+═══════════════════════════════════════════
+• Generate exactly 5-7 scenes that build the concept step by step.
+• Each scene: 6-10 seconds (durationSec). Total video: 35-55 seconds.
+• Narration should be conversational and friendly, matching Class ${grade} ${board} vocabulary.
+• Scene 1  → Introduction/hook to grab attention.
+• Middle   → Build up the concept with visuals — use 2-5 objects per scene.
+• Last     → Summary/conclusion with key takeaway.
+• Every scene MUST include a "visual" object with at least one item in "objects".
+• Use "annotations" to label important values, highlight key points, or point to objects.
+• Choose "layout" to arrange content well — use "left-right-split" for comparisons, "centered" for single focal objects, "top-bottom" for formula + diagram, "fullscreen" for immersive scenes.
+• Choose "animation" to control timing — "sequential" for step-by-step reveals, "simultaneous" for everything at once, "staggered" for cascading effects.
+• "formula" can be an empty string if no formula is relevant for that scene.
+
+═══════════════════════════════════════════
+QUALITY EXAMPLES
+═══════════════════════════════════════════
+
+EXAMPLE 1 — Newton's Second Law (Physics, Class 9)
+{
+  "id": 2,
+  "title": "Force, Mass, and Acceleration",
+  "narration": "Newton's second law tells us that when you push an object, the acceleration depends on how hard you push and how heavy the object is. More force means more acceleration, but more mass means less acceleration.",
+  "durationSec": 9,
+  "formula": "F = m × a",
+  "visual": {
+    "layout": "left-right-split",
+    "background": "space",
+    "objects": [
+      { "kind": "rectangle", "label": "Box (5 kg)", "x": 30, "y": 45, "w": 15, "h": 12, "color": "#3b82f6", "glow": false },
+      { "kind": "force-arrow", "label": "F = 20 N", "direction": "right", "magnitude": 20, "color": "#ef4444", "x": 15, "y": 50 },
+      { "kind": "force-arrow", "label": "a = 4 m/s²", "direction": "right", "magnitude": 10, "color": "#10b981", "x": 48, "y": 50 },
+      { "kind": "text-block", "text": "F = m × a → 20 = 5 × 4", "x": 60, "y": 30, "fontSize": 14, "color": "#fbbf24" }
+    ],
+    "annotations": [
+      { "text": "Applied force", "x": 15, "y": 40, "highlight": true, "pointsTo": "F = 20 N" },
+      { "text": "Resulting acceleration", "x": 55, "y": 60, "highlight": true, "pointsTo": "a = 4 m/s²" }
+    ],
+    "animation": "sequential"
+  }
+}
+
+EXAMPLE 2 — DNA Replication (Biology, Class 12)
+{
+  "id": 3,
+  "title": "Unwinding the Double Helix",
+  "narration": "During DNA replication, the enzyme helicase unwinds the double helix by breaking hydrogen bonds between base pairs. Each strand then serves as a template for building a new complementary strand.",
+  "durationSec": 10,
+  "formula": "",
+  "visual": {
+    "layout": "centered",
+    "background": "organic",
+    "objects": [
+      { "kind": "dna-helix", "label": "DNA", "basePairs": ["A-T", "T-A", "G-C", "C-G", "A-T"], "animation": "unwind" },
+      { "kind": "icon-label", "icon": "🔓", "label": "Helicase", "x": 50, "y": 35 },
+      { "kind": "arrow", "fromX": 50, "fromY": 40, "toX": 50, "toY": 50, "label": "unwinds", "color": "#f59e0b", "dashed": false },
+      { "kind": "callout", "text": "H-bonds break here", "x": 65, "y": 55, "pointsToX": 50, "pointsToY": 55 }
+    ],
+    "annotations": [
+      { "text": "Template strands separate", "x": 50, "y": 85, "highlight": true, "pointsTo": "DNA" }
+    ],
+    "animation": "sequential"
+  }
+}
+
+═══════════════════════════════════════════
+ADDITIONAL RULES
+═══════════════════════════════════════════
+• Based solely on the chat history and the user's current query, automatically guess the student's confidence score (0-100). If they say "I didn't understand" or switch topics abruptly, drastically lower it. Return this integer under the JSON key "self_guessed_confidence".
+• Tailor vocabulary and depth to Class ${grade} ${board} level.
+• Keep keyPoints concise (max 15 words each).
+• Be pedagogically sound and curriculum-aligned.
+• Narration should sound like a friendly teacher explaining.
+• You MUST respond with ONLY valid JSON — no markdown fences, no commentary.`;
+
+  // ── Compile conversation history for context ──
   const historyLog = (DATA?.chatHistory?.[subject] || [])
-    .slice(-5, -1) // Grab recent context
+    .slice(-5, -1)
     .map(m => m.type === 'user' ? `Student: ${m.text}` : `AI Video Concept: ${m.concept || m.videoTitle}`)
     .join('\n');
-    
+
   let userContent = `Student's question: "${question}"`;
   if (historyLog.trim().length > 0) {
     userContent = `PREVIOUS CONVERSATION CONTEXT:\n${historyLog}\n\n---\n\nStudent's current question/action: "${question}"\n\nIf the student is asking to "Go Deeper", "Simplify", or "Add Example", apply it to the MOST RECENT concept discussed in the context above.`;
   }
 
   const requestBody = {
-    model: 'llama-3.3-70b-versatile',
+    model: GROQ_MODEL,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent }
     ],
     temperature: 0.7,
-    max_tokens: 2048,
+    max_tokens: 4096,
     response_format: { type: 'json_object' }
   };
 
@@ -142,6 +354,7 @@ RULES:
 /**
  * Fallback: auto-generates scenes from a flat blueprint that lacks a scenes array.
  * Creates a 6-scene animated lesson from keyPoints, concept, labels, etc.
+ * Each generated scene includes a default `visual` object for the renderer.
  */
 function generateScenesFromBlueprint(bp) {
   const title = bp.videoTitle || 'Lesson';
@@ -150,6 +363,9 @@ function generateScenesFromBlueprint(bp) {
   const vType = bp.visualType || 'diagram';
   const labels = bp.labels || bp.elements || [];
   const formulas = bp.mathFormulas || [];
+
+  // Determine a reasonable background based on available info
+  const fallbackBackground = 'dark';
 
   const scenes = [];
 
@@ -161,7 +377,19 @@ function generateScenesFromBlueprint(bp) {
     visualType: 'diagram',
     elements: labels.slice(0, 4).length > 0 ? [title, ...labels.slice(0, 3)] : [title, 'Concept', 'Theory', 'Application'],
     formula: '',
-    durationSec: 8
+    durationSec: 8,
+    visual: {
+      layout: 'centered',
+      background: fallbackBackground,
+      objects: [
+        { kind: 'text-block', text: title, x: 50, y: 20, fontSize: 18, color: '#60a5fa' },
+        { kind: 'rectangle', label: labels[0] || 'Core Concept', x: 30, y: 35, w: 40, h: 25, color: '#3b82f6', glow: true }
+      ],
+      annotations: [
+        { text: 'Let\'s begin!', x: 50, y: 80, highlight: true, pointsTo: labels[0] || 'Core Concept' }
+      ],
+      animation: 'sequential'
+    }
   });
 
   // Scene 2-4: Key points (one per scene)
@@ -174,7 +402,17 @@ function generateScenesFromBlueprint(bp) {
       visualType: i === 0 ? vType : visualTypes[i % visualTypes.length],
       elements: labels.length > 0 ? labels : [kp.split(' ').slice(0, 2).join(' ')],
       formula: formulas[i] || '',
-      durationSec: 8
+      durationSec: 8,
+      visual: {
+        layout: 'centered',
+        background: fallbackBackground,
+        objects: [
+          { kind: 'text-block', text: kp, x: 50, y: 25, fontSize: 12, color: '#fbbf24' },
+          { kind: 'rectangle', label: kp.split(' ').slice(0, 3).join(' '), x: 25, y: 40, w: 50, h: 20, color: '#8b5cf6', glow: false }
+        ],
+        annotations: [],
+        animation: 'staggered'
+      }
     });
   });
 
@@ -187,7 +425,18 @@ function generateScenesFromBlueprint(bp) {
       visualType: 'equation',
       elements: labels.length > 0 ? labels : ['Formula', 'Equation'],
       formula: formulas[0],
-      durationSec: 7
+      durationSec: 7,
+      visual: {
+        layout: 'centered',
+        background: fallbackBackground,
+        objects: [
+          { kind: 'text-block', text: formulas[0], x: 50, y: 45, fontSize: 20, color: '#fbbf24' }
+        ],
+        annotations: [
+          { text: 'Key formula', x: 50, y: 70, highlight: true, pointsTo: 'Formula' }
+        ],
+        animation: 'simultaneous'
+      }
     });
   }
 
@@ -199,7 +448,25 @@ function generateScenesFromBlueprint(bp) {
     visualType: 'diagram',
     elements: keyPoints.slice(0, 4).map(k => k.split(' ').slice(0, 3).join(' ')),
     formula: formulas[0] || '',
-    durationSec: 8
+    durationSec: 8,
+    visual: {
+      layout: 'centered',
+      background: fallbackBackground,
+      objects: keyPoints.slice(0, 4).map((kp, i) => ({
+        kind: 'rectangle',
+        label: kp.split(' ').slice(0, 3).join(' '),
+        x: 10 + i * 22,
+        y: 40,
+        w: 20,
+        h: 15,
+        color: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'][i] || '#3b82f6',
+        glow: false
+      })),
+      annotations: [
+        { text: 'Key Takeaways', x: 50, y: 20, highlight: true, pointsTo: '' }
+      ],
+      animation: 'staggered'
+    }
   });
 
   return scenes;
@@ -349,8 +616,9 @@ function generateDynamicManimSVG(blueprint) {
 
 // ── OMNI-MODEL GENERAL TEXT FETCHER (Groq) ──
 async function callGroqGeneralText(query) {
-  if (!GROQ_API_KEY || GROQ_API_KEY.trim() === '') {
-    return "To enable live Omni-Model chat answers on the dashboard, please enter your Groq API Key in the **Settings** tab. For now, you can ask subject-related questions in the **Ask AI** tab to use the built-in offline educational engine!";
+  const GROQ_API_KEY = getApiKey();
+  if (!GROQ_API_KEY) {
+    return "To enable live AI answers on the dashboard, please enter your **Groq API Key** in the **Settings** tab (free at console.groq.com). You can still use the Ask AI tab with offline mode!";
   }
   const prompt = `You are VidScholar AI, a friendly, ultra-knowledgeable Omni-Model tutor.
 The user has asked the following question from the global dashboard:
@@ -358,28 +626,28 @@ The user has asked the following question from the global dashboard:
 ${query}
 ---
 Provide a clear, accurate, and pedagogical textual explanation. 
-Keep it structured, engaging, and directly helpful. Do not output JSON. Do not output video scripts. Just answer the question thoroughly in 2-3 short paragraphs formatting with markdown.`;
+Keep it structured, engaging, and directly helpful. Do not output JSON. Do not output video scripts. Just answer the question thoroughly in 2-3 short paragraphs with markdown formatting.`;
 
   try {
     const res = await fetch(GROQ_ENDPOINT, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json"
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
+        model: GROQ_MODEL,
+        messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
         max_tokens: 1500
       })
     });
-    
-    if (!res.ok) throw new Error("Groq API responded with " + res.status);
+
+    if (!res.ok) throw new Error('Groq API responded with ' + res.status);
     const data = await res.json();
     return data.choices[0].message.content;
   } catch (err) {
-    console.error("Groq General Model Error:", err);
+    console.error('Groq General Model Error:', err);
     return "I'm having trouble connecting to my knowledge base right now. Please try again in a moment!";
   }
 }

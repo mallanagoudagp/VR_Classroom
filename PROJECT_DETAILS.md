@@ -22,7 +22,7 @@ The main entry point holding the `<div id="app"></div>` container. It imports ex
 
 ### 2. `js/app.js`
 The central nervous system of the SPA, controlling views, states, calculations, and UI event bindings.
-- **State Management**: Controls routing (`onboarding`, `dashboard`, `chat`, `lesson`, `teacher`, `history`, `settings`) and global configuration (difficulty level, view modes, student or teacher persona role).
+- **State Management**: Controls routing (`onboarding`, `dashboard`, `chat`, `lesson`, `history`, `settings`) and global configuration (difficulty level, view modes, student persona role).
 - **Dual-Agent Understanding Engine**:
   - Intelligently calculates an overall mastery/confidence score (0–100%) for a student using:
     - **Agent 1 (Subject Affinity)**: Initialized during onboarding based on a student's "favourite subject". (0 to 0.5 points).
@@ -65,9 +65,6 @@ A rich conversational wrapper where users probe the VidScholar AI on different t
 
 ### Real-Time Animation Player
 The video player implements playback controls alongside speed multipliers (0.75x, 1x, 1.5x), an animated timescale progress bar synced sequentially from visual actions to Text-To-Speech queues.
-
-### Teacher View & History Profiles
-Though currently operating entirely client-side, the scaffolding exists for teacher oversight. Mock data simulates interventions, student performance heat maps, and aggregate platform usage trends highlighting knowledge gaps or advanced understanding metrics.
 
 ---
 

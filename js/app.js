@@ -3,20 +3,30 @@ let _bootDone = false;
 function _boot() {
   if (_bootDone) return;
   _bootDone = true;
-  const restored = loadScoresFromStorage();
-  if (restored) console.log('✅ VidScholar: Scores restored from localStorage');
-  
-  // SPA Routing Fallback
-  const path = window.location.pathname;
-  if (path === '/dashboard') state.page = 'dashboard';
-  else if (path === '/chat') state.page = 'chat';
-  else if (path === '/lesson') state.page = 'lesson';
-  else if (path === '/history') state.page = 'history';
-  else if (path === '/settings') state.page = 'settings';
-  else if (path === '/teacher') { state.page = 'teacher'; state.role = 'teacher'; }
+
+  // ── AUTH GATE ──
+  const currentUser = authGetCurrentUser();
+  if (!currentUser) {
+    // Not logged in — show login screen
+    state.page = 'login';
+    render();
+    return;
+  }
+
+  // User is logged in — restore their personal data
+  DATA.user.name = currentUser.name;
+  DATA.user.short = currentUser.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  const onboardingDone = loadScoresFromStorage();
+  if (onboardingDone) {
+    console.log('✅ VidScholar: Personal data restored for', currentUser.name);
+    state.page = 'dashboard';
+  } else {
+    // First-time user — go through onboarding
+    state.page = 'onboarding';
+  }
 
   window.addEventListener('popstate', () => {
-    const p = window.location.pathname.replace(/^\//, '') || 'onboarding';
+    const p = window.location.pathname.replace(/^\//, '') || 'dashboard';
     state.page = p;
     render(true);
   });
@@ -26,7 +36,9 @@ function _boot() {
 document.addEventListener('DOMContentLoaded', _boot);
 
 const state = {
-  page: 'onboarding', // onboarding | dashboard | chat | lesson | teacher | history | settings
+  page: 'login', // login | onboarding | dashboard | chat | lesson | history | settings
+  authMode: 'login', // 'login' | 'register'
+  authError: '',
   obStep: 1,
   obBoard: '', obGrade: '', obState: '', obSubject: '',
   activeSubject: 'Physics',
@@ -38,7 +50,6 @@ const state = {
   activeLesson: null,
   viewMode: 'Executive Summary',
   diffLevel: 'Auto',
-  role: 'student',
   // Tracks AI-recommended follow-up questions to prevent vocab agent inflation
   lastFollowUps: [],
 };
@@ -49,7 +60,6 @@ const icons = {
   lessons: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
   history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
-  teacher: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
   bell: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`,
   help: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
   mic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
@@ -221,33 +231,123 @@ function renderUnderstandingPredictor() {
 // ── RENDER ──
 function render(skipHistory = false) {
   const app = document.getElementById('app');
-  
+
   if (!skipHistory) {
-      if (state.page === 'onboarding') window.history.pushState({}, '', '/');
-      else window.history.pushState({}, '', '/' + state.page);
+    if (state.page === 'login' || state.page === 'onboarding') window.history.pushState({}, '', '/');
+    else window.history.pushState({}, '', '/' + state.page);
   }
 
+  if (state.page === 'login') { app.innerHTML = renderLogin(); bindLogin(); return; }
   if (state.page === 'onboarding') { app.innerHTML = renderOnboarding(); bindOnboarding(); return; }
   app.innerHTML = renderShell(getPageContent());
   bindNav(); bindPage();
 }
 
+// ── LOGIN / REGISTER SCREEN ──
+function renderLogin() {
+  const isReg = state.authMode === 'register';
+  const errHtml = state.authError
+    ? `<div class="auth-error">${state.authError}</div>` : '';
+  return `
+  <div class="auth-page">
+    <div class="auth-bg-orb auth-orb1"></div>
+    <div class="auth-bg-orb auth-orb2"></div>
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="auth-logo">🎓</div>
+        <h1>VidScholar</h1>
+        <p>AI-Powered Personalized Learning</p>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab ${!isReg ? 'active' : ''}" id="tab-login">Sign In</button>
+        <button class="auth-tab ${isReg ? 'active' : ''}" id="tab-register">Create Account</button>
+      </div>
+      ${errHtml}
+      <div class="auth-form">
+        ${isReg ? `
+          <div class="auth-field">
+            <label>Full Name</label>
+            <input type="text" id="auth-name" placeholder="e.g. Rohan Sharma" autocomplete="name" />
+          </div>` : ''}
+        <div class="auth-field">
+          <label>Username</label>
+          <input type="text" id="auth-username" placeholder="e.g. rohan123" autocomplete="username" />
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <input type="password" id="auth-password" placeholder="${isReg ? 'Choose a password (min 4 chars)' : 'Enter your password'}" autocomplete="${isReg ? 'new-password' : 'current-password'}" />
+        </div>
+        <button class="btn btn-primary btn-lg auth-submit" id="auth-submit" style="width:100%;margin-top:8px">
+          ${isReg ? '🚀 Create Account & Start Learning' : '🔑 Sign In'}
+        </button>
+      </div>
+      <p class="auth-footer">
+        ${isReg
+          ? `Already have an account? <span class="auth-link" id="auth-switch">Sign in</span>`
+          : `New to VidScholar? <span class="auth-link" id="auth-switch">Create a free account</span>`}
+      </p>
+      <div class="auth-privacy">🔒 Your data stays on your device — no server, fully private.</div>
+    </div>
+  </div>`;
+}
+
+function bindLogin() {
+  const isReg = state.authMode === 'register';
+
+  document.getElementById('tab-login')?.addEventListener('click', () => {
+    state.authMode = 'login'; state.authError = ''; render();
+  });
+  document.getElementById('tab-register')?.addEventListener('click', () => {
+    state.authMode = 'register'; state.authError = ''; render();
+  });
+  document.getElementById('auth-switch')?.addEventListener('click', () => {
+    state.authMode = isReg ? 'login' : 'register'; state.authError = ''; render();
+  });
+
+  // Allow Enter key to submit
+  ['auth-name','auth-username','auth-password'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('auth-submit')?.click();
+    });
+  });
+
+  document.getElementById('auth-submit')?.addEventListener('click', () => {
+    const username = document.getElementById('auth-username')?.value.trim() || '';
+    const password = document.getElementById('auth-password')?.value || '';
+
+    if (isReg) {
+      const name = document.getElementById('auth-name')?.value.trim() || '';
+      const result = authRegister(name, username, password);
+      if (!result.ok) { state.authError = result.error; render(); return; }
+      // Auto-login after register
+      authSetSession(username);
+      DATA.user.name = result.user.name;
+      DATA.user.short = result.user.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+      state.authError = '';
+      state.page = 'onboarding';
+    } else {
+      const result = authLogin(username, password);
+      if (!result.ok) { state.authError = result.error; render(); return; }
+      DATA.user.name = result.user.name;
+      DATA.user.short = result.user.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+      const onboardingDone = loadScoresFromStorage();
+      state.authError = '';
+      state.page = onboardingDone ? 'dashboard' : 'onboarding';
+    }
+    render();
+  });
+}
+
+
 function renderShell(content) {
   const u = DATA.user;
-  let navItems;
-  if (state.role === 'student') {
-    navItems = [
-      { id: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
-      { id: 'chat', label: 'Ask AI', icon: icons.lessons },
-      { id: 'lesson', label: 'My Lessons', icon: icons.lessons },
-      { id: 'history', label: 'History', icon: icons.history },
-      { id: 'settings', label: 'Settings', icon: icons.settings },
-    ];
-  } else {
-    navItems = [
-      { id: 'teacher', label: 'Class Overview', icon: icons.teacher },
-    ];
-  }
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
+    { id: 'chat', label: 'Ask AI', icon: icons.lessons },
+    { id: 'lesson', label: 'My Lessons', icon: icons.lessons },
+    { id: 'history', label: 'History', icon: icons.history },
+    { id: 'settings', label: 'Settings', icon: icons.settings },
+  ];
   const subjConf = DATA.user.confidence;
   return `
   <div class="shell">
@@ -261,23 +361,23 @@ function renderShell(content) {
           <div class="nav-item ${state.page === n.id ? 'active' : ''}" data-page="${n.id}">
             ${n.icon}<span>${n.label}</span>
           </div>`).join('')}
-        ${state.role === 'student' ? `<div class="nav-lbl">Subjects</div>
+        <div class="nav-lbl">Subjects</div>
         ${DATA.subjects.map(s => `
           <div class="subj-item ${state.chatSubject === s.name ? 'active' : ''}" data-subj="${s.name}">
             <span class="subj-dot" style="background:${s.dot}"></span>${s.icon} ${s.name}
             <span style="margin-left:auto;font-size:10px;color:var(--gray-500)">${Math.round(calcUnderstandingScore(s.name) * 100)}%</span>
-          </div>`).join('')}` : ''}
+          </div>`).join('')}
       </nav>
       <div class="sidebar-user" style="flex-direction:column;align-items:flex-start;gap:12px">
         <div style="display:flex;align-items:center;gap:12px">
-          <div class="avatar" style="background:${state.role === 'teacher' ? 'var(--secondary)' : 'var(--primary-600)'}">${state.role === 'teacher' ? 'T' : u.short}</div>
+          <div class="avatar" style="background:var(--primary-600)">${u.short}</div>
           <div class="user-info">
-            <h4>${state.role === 'teacher' ? 'Educator View' : u.name}</h4>
-            <p>${state.role === 'teacher' ? 'Admin Access' : `Class ${u.grade} · ${u.board}`}</p>
+            <h4>${u.name}</h4>
+            <p>Class ${u.grade} · ${u.board}</p>
           </div>
         </div>
-        <button id="role-toggle-btn" style="width:100%;padding:6px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:11px">
-          Switch to ${state.role === 'student' ? 'Teacher' : 'Student'} Role
+        <button id="logout-btn" style="width:100%;padding:6px;border:1px solid rgba(239,68,68,0.4);background:transparent;color:#f87171;border-radius:6px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;gap:5px">
+          🚪 Sign Out
         </button>
       </div>
     </aside>
@@ -290,7 +390,7 @@ function renderShell(content) {
 }
 
 function renderTopbar() {
-  const breadMap = { dashboard: 'Dashboard', chat: 'Ask AI', lesson: 'My Lessons', history: 'History', teacher: 'Teacher View', settings: 'Settings' };
+  const breadMap = { dashboard: 'Dashboard', chat: 'Ask AI', lesson: 'My Lessons', history: 'History', settings: 'Settings' };
   return `
   <div class="topbar">
     <div class="breadcrumb">
@@ -311,7 +411,6 @@ function getPageContent() {
     case 'dashboard': return `<div class="page fade-in">${renderDashboard()}</div>`;
     case 'chat': return renderChat();
     case 'lesson': return renderLesson();
-    case 'teacher': return `<div class="page fade-in">${renderTeacher()}</div>`;
     case 'history': return `<div class="page fade-in">${renderHistory()}</div>`;
     case 'settings': return `<div class="page fade-in">${renderSettings()}</div>`;
     default: return `<div class="page fade-in">${renderDashboard()}</div>`;
@@ -405,18 +504,17 @@ function bindOnboarding() {
       state.obStep++;
       render();
     } else {
-      // User finishes onboarding
+      // User finishes onboarding — save profile under their account key
       DATA.user.state = state.obState || 'Karnataka';
       DATA.user.board = state.obBoard || 'CBSE';
       DATA.user.grade = state.obGrade || 'Class 10';
       if (state.obSubject) {
         DATA.user.subject = state.obSubject;
-        // Initialise dual-agent scores based on favourite subject
         initAgentScores(state.obSubject);
       } else {
-        // Default to Physics if user skipped subject pick
         initAgentScores('Physics');
       }
+      saveScoresToStorage(); // Persist onboarding choices immediately
       state.page = 'dashboard';
       render();
     }
@@ -528,7 +626,7 @@ function renderDashboard() {
     ${DATA.lessons.map(l => `
       <div class="lcard" data-lesson="${l.id}">
         <div class="lcard-thumb">
-          <img class="lcard-thumb-bg" src="${l.thumb}" alt="${l.title}" loading="lazy">
+          <img class="lcard-thumb-bg" src="${l.thumb}" alt="${l.title}">
           <div class="lcard-overlay"></div>
           <span class="lcard-badge">AI Animated</span>
         </div>
@@ -644,6 +742,14 @@ function renderAIMsg(m) {
             <button class="spd-btn active-spd" data-speed="1">1x</button>
             <button class="spd-btn" data-speed="1.5">1.5x</button>
           </div>
+        </div>
+        <div class="scene-thumbnail-strip" id="scene-thumbstrip-${playerId}">
+          ${m.blueprint.scenes.map((s, si) => `
+            <div class="scene-thumb${si === 0 ? ' active' : ''}" data-scene-idx="${si}" data-player-id="${playerId}" title="${(s.title || 'Scene ' + (si + 1)).replace(/"/g, '&quot;')}">
+              <canvas class="scene-thumb-canvas" data-scene-idx="${si}" width="120" height="68"></canvas>
+              <span class="scene-thumb-label">${si + 1}</span>
+            </div>
+          `).join('')}
         </div>` : ''}
       </div>
       <div class="action-row">
@@ -942,124 +1048,7 @@ function renderLesson() {
   </div>`;
 }
 
-// ── TEACHER DASHBOARD ──
-function renderTeacher() {
-  return `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
-    <div>
-      <h1 style="font-family:var(--font-d);font-size:22px;font-weight:800;color:var(--gray-900)">Class Performance Overview</h1>
-      <p style="font-size:13px;color:var(--gray-500);margin-top:2px">Section 8-12 · Data Science &amp; AI Foundations</p>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:13px;color:var(--gray-600)">📅 Last 30 Days</span>
-      <button class="btn btn-primary">Generate Report</button>
-    </div>
-  </div>
 
-  <div class="teacher-grid">
-    <div>
-      <div class="card" style="margin-bottom:18px">
-        <div class="card-hd"><span class="card-title">Topic Understanding Heat Map</span><span class="badge badge-blue">● Live Feedback</span></div>
-        <div class="card-bd">
-          <div class="heat-grid">
-            ${DATA.heatMap.map(t => `
-              <div class="heat-tile" style="background:${t.color}" title="${t.pct}%">${t.pct}%</div>`).join('')}
-          </div>
-          <div class="heat-legend">
-            <span><span class="heat-dot" style="background:#ef4444"></span>Critical (&lt;40%)</span>
-            <span><span class="heat-dot" style="background:#93c5fd"></span>Developing</span>
-            <span><span class="heat-dot" style="background:#1e40af"></span>Proficient</span>
-            <a href="#" style="margin-left:auto;font-size:12px;color:var(--primary-600);font-weight:600">View Detailed Breakdown →</a>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-hd">
-          <span class="card-title">Student Progress &amp; Focus Areas</span>
-          <div style="display:flex;gap:8px">
-            <select class="form-sel" style="width:auto;padding:5px 28px 5px 10px;font-size:12px">
-              <option>Filter: Needs Attention</option><option>All Students</option>
-            </select>
-            <select class="form-sel" style="width:auto;padding:5px 28px 5px 10px;font-size:12px">
-              <option>Sort: Alphabetical</option><option>Sort: Grade</option>
-            </select>
-          </div>
-        </div>
-        <div class="card-bd" style="padding:0">
-          <table class="student-table">
-            <thead><tr>
-              <th>Student</th><th>Overall Grade</th><th>Focus Areas</th><th>AI Interventions</th><th>Action</th>
-            </tr></thead>
-            <tbody>
-              ${DATA.students.map(s => `
-                <tr>
-                  <td>
-                    <div style="display:flex;align-items:center;gap:10px">
-                      <div class="avatar" style="background:${s.color};width:32px;height:32px;font-size:12px">${s.initials}</div>
-                      <div><div class="student-name">${s.name}</div><div class="student-meta">Last active ${s.active}</div></div>
-                    </div>
-                  </td>
-                  <td>
-                    <span style="font-size:15px;font-weight:800;color:${s.grade >= 80 ? 'var(--success)' : s.grade >= 60 ? 'var(--warning)' : 'var(--error)'}">${s.grade}%</span>
-                    <span style="font-size:14px">${s.trend === 'up' ? '↗' : s.trend === 'down' ? '↘' : '→'}</span>
-                  </td>
-                  <td><div class="focus-tags">${s.focus.map(f => `<span class="focus-tag">${f}</span>`).join('')}</div></td>
-                  <td style="font-size:12.5px;color:${s.critical ? 'var(--error)' : 'var(--gray-600)'}">${s.interventions}</td>
-                  <td>${s.critical ? `<button class="btn btn-danger btn-sm">Contact</button>` : `<button class="btn btn-ghost btn-sm">⋯ View</button>`}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-hd"><span class="card-title">Difficulty Adaptation Stats</span></div>
-        <div class="card-bd">
-          <div class="adapt-stat">
-            <span class="adapt-lbl">Content Simplified</span><span class="adapt-pct">64%</span>
-          </div>
-          <div class="prog-track" style="margin-bottom:14px"><div class="prog-fill amber" style="width:64%"></div></div>
-          <div class="adapt-stat">
-            <span class="adapt-lbl">Curriculum Deepened</span><span class="adapt-pct">22%</span>
-          </div>
-          <div class="prog-track" style="margin-bottom:14px"><div class="prog-fill green" style="width:22%"></div></div>
-          <div class="ai-insight">
-            🤖 AI Analysis: Students are struggling with <a href="#">Mathematical Foundations</a>. System has automatically shifted 14 learners to "Bridge Mode" modules.
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-hd"><span class="card-title">Common Questions</span></div>
-        <div class="card-bd">
-          ${DATA.commonQuestions.map(q => `
-            <div class="cq-item">
-              <div class="cq-meta">${q.type} · ${q.students} Students</div>
-              <div class="cq-text">${q.text}</div>
-            </div>`).join('')}
-          <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:4px">Resolve in Class</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-hd"><span class="card-title" style="color:var(--error)">⚠️ Critical Alerts</span></div>
-        <div class="card-bd">
-          <div class="alert-item">
-            <h4>Dropout Risk Detected</h4>
-            <p>3 students haven't logged in for 5+ days.</p>
-          </div>
-          <div class="alert-item">
-            <h4>Exam Threshold Alert</h4>
-            <p>Quiz avg dropped by 15% in Module 4.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
 
 // ── HISTORY ──
 function renderHistory() {
@@ -1131,7 +1120,7 @@ function renderSettings() {
             <input type="password" id="groq-key-input" class="form-sel" style="flex:1;padding:8px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px" placeholder="gsk_..." value="${localStorage.getItem('GROQ_API_KEY') || ''}" />
             <button class="btn btn-primary" id="save-key-btn" style="padding:8px 16px;border-radius:8px;font-size:13px">Save</button>
           </div>
-          <p style="font-size:11px;color:var(--gray-500);margin-top:6px;line-height:1.4">Get a free key from the <a href="https://console.groq.com/" target="_blank" style="color:var(--primary-600);text-decoration:underline">Groq Console</a>. Key is saved locally in your browser's localStorage.</p>
+          <p style="font-size:11px;color:var(--gray-500);margin-top:6px;line-height:1.4">Get your free key from <a href="https://console.groq.com" target="_blank" style="color:var(--primary-600);text-decoration:underline">console.groq.com</a>. Key is stored locally in your browser only — never sent anywhere else.</p>
         </div>
       </div>
     </div>
@@ -1160,12 +1149,19 @@ function bindNav() {
   document.querySelectorAll('[data-page]').forEach(el => {
     if (!el.classList.contains('nav-item')) el.addEventListener('click', () => { state.page = el.dataset.page; render(); });
   });
-  document.getElementById('role-toggle-btn')?.addEventListener('click', () => {
-    state.role = state.role === 'student' ? 'teacher' : 'student';
-    state.page = state.role === 'student' ? 'dashboard' : 'teacher';
+  document.getElementById('logout-btn')?.addEventListener('click', () => {
+    if (!confirm(`Sign out of ${DATA.user.name}'s account?`)) return;
+    authLogout();
+    resetDataToDefaults();
+    state.page = 'login';
+    state.authMode = 'login';
+    state.authError = '';
+    state.obStep = 1;
+    state.obBoard = ''; state.obGrade = ''; state.obState = ''; state.obSubject = '';
     render();
   });
 }
+
 
 function bindPage() {
   // Dashboard
@@ -1260,7 +1256,7 @@ function bindPage() {
     if (input) {
       const key = input.value.trim();
       localStorage.setItem('GROQ_API_KEY', key);
-      alert('Groq API Key saved successfully! The page will now refresh.');
+      alert('✅ Groq API Key saved! The page will now refresh.');
       window.location.reload();
     }
   });
@@ -1305,6 +1301,10 @@ function sendChat() {
   }
 
   state.lastUserQuery = combinedQuery || 'Image Query';
+  // Ensure chatHistory exists for this subject
+  if (!DATA.chatHistory[state.chatSubject]) {
+    DATA.chatHistory[state.chatSubject] = [];
+  }
   DATA.chatHistory[state.chatSubject].push({ type: 'user', text: q || 'Uploaded Image', imageUrl: imgUrl });
   inp.value = '';
   state.pendingImage = null;
@@ -1432,6 +1432,11 @@ function triggerImageUpload(inputId) {
 function startGeneration() {
   const query = state.lastUserQuery || '';
   const subject = state.chatSubject;
+
+  // Ensure chatHistory exists for this subject
+  if (!DATA.chatHistory[subject]) {
+    DATA.chatHistory[subject] = [];
+  }
 
   // Intercept simple greetings
   const greetings = ['hi', 'hello', 'hey', 'hii', 'hiii', 'helo', 'how are you', 'how are you?'];
@@ -1596,6 +1601,10 @@ function startGeneration() {
 
       // ✅ Gemini returned a real lesson blueprint
       const canvasId = 'manim-video-canvas-' + (++_canvasCounter);
+      // Ensure chatHistory exists for this subject
+      if (!DATA.chatHistory[state.chatSubject]) {
+        DATA.chatHistory[state.chatSubject] = [];
+      }
       DATA.chatHistory[state.chatSubject].push({
         type: 'ai',
         videoTitle: blueprint.videoTitle || 'AI Generated Lesson',
@@ -1649,6 +1658,10 @@ function startGeneration() {
     } else {
       // Fallback: use local topic matching if Gemini fails
       const topicMatch = matchTopic(query, subject);
+      // Ensure chatHistory exists for this subject
+      if (!DATA.chatHistory[state.chatSubject]) {
+        DATA.chatHistory[state.chatSubject] = [];
+      }
       DATA.chatHistory[state.chatSubject].push({
         type: 'ai',
         videoTitle: topicMatch.videoTitle,
@@ -1697,6 +1710,10 @@ function startGeneration() {
 
     // Store the blueprint for re-initialization after DOM rebuilds
     if (blueprint && blueprint.scenes && blueprint.scenes.length > 0) {
+      // Ensure chatHistory exists for this subject
+      if (!DATA.chatHistory[state.chatSubject]) {
+        DATA.chatHistory[state.chatSubject] = [];
+      }
       const latestMsg = DATA.chatHistory[state.chatSubject].slice(-1)[0];
       const cId = latestMsg?.canvasId;
       state.lastBlueprint = blueprint;
@@ -1708,6 +1725,14 @@ function startGeneration() {
         if (activePlayer && activePlayer.canvas) {
           console.log('✅ Player ready, auto-playing');
           activePlayer.play();
+          // Render scene thumbnails
+          const strip = document.getElementById('scene-thumbstrip-' + cId);
+          if (strip) {
+            strip.querySelectorAll('.scene-thumb-canvas').forEach(tc => {
+              const si = parseInt(tc.dataset.sceneIdx);
+              _renderMiniThumbnail(tc, blueprint, si);
+            });
+          }
         } else {
           console.error('❌ Canvas not found:', cId);
         }
@@ -1769,6 +1794,27 @@ document.addEventListener('click', (e) => {
     activePlayer.seek(Math.max(0, Math.min(1, pct)));
   }
 
+  // Scene thumbnail click — jump to scene
+  const thumbEl = e.target.closest('.scene-thumb');
+  if (thumbEl && activePlayer) {
+    const sceneIdx = parseInt(thumbEl.dataset.sceneIdx);
+    if (!isNaN(sceneIdx) && sceneIdx < activePlayer.scenes.length) {
+      activePlayer.currentScene = sceneIdx;
+      activePlayer.elapsed = 0;
+      activePlayer.sceneStartTime = performance.now();
+      activePlayer.stopSpeech();
+      activePlayer.speakScene(sceneIdx);
+      activePlayer.drawScene(sceneIdx, 0);
+      if (!activePlayer.playing) activePlayer.play();
+      // Update active thumb
+      const strip = thumbEl.closest('.scene-thumbnail-strip');
+      if (strip) {
+        strip.querySelectorAll('.scene-thumb').forEach(t => t.classList.remove('active'));
+        thumbEl.classList.add('active');
+      }
+    }
+  }
+
   // Action chips (Simplify, Go Deeper, Add Example)
   const achip = e.target.closest('.achip');
   if (achip && achip.id !== 'replay-btn') {
@@ -1796,6 +1842,60 @@ document.addEventListener('click', (e) => {
     }
   }
 });
+
+// ── MINI THUMBNAIL RENDERER ──
+function _renderMiniThumbnail(canvas, blueprint, sceneIdx) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const themes = {
+    blue:   { bg1: '#0f172a', bg2: '#1e3a8a', primary: '#3b82f6', secondary: '#60a5fa', accent: '#93c5fd' },
+    green:  { bg1: '#0f172a', bg2: '#064e3b', primary: '#10b981', secondary: '#34d399', accent: '#6ee7b7' },
+    purple: { bg1: '#0f172a', bg2: '#4c1d95', primary: '#8b5cf6', secondary: '#a78bfa', accent: '#c4b5fd' },
+    amber:  { bg1: '#0f172a', bg2: '#78350f', primary: '#f59e0b', secondary: '#fbbf24', accent: '#fde68a' },
+    red:    { bg1: '#0f172a', bg2: '#7f1d1d', primary: '#ef4444', secondary: '#f87171', accent: '#fca5a5' }
+  };
+  const th = themes[blueprint.colorTheme] || themes.blue;
+  const scene = blueprint.scenes[sceneIdx];
+  if (!scene) return;
+
+  // Background
+  const bgMap = { space: '#050816', lab: '#0a1628', grid: '#0c0f1d', organic: '#0a1208', dark: th.bg1 };
+  const bgColor = bgMap[(scene.visual && scene.visual.background) || 'dark'] || th.bg1;
+  const grad = ctx.createRadialGradient(W/2, H/2, 5, W/2, H/2, W*0.7);
+  grad.addColorStop(0, th.bg2);
+  grad.addColorStop(1, bgColor);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px "Inter", sans-serif';
+  ctx.textAlign = 'center';
+  const title = (scene.title || `Scene ${sceneIdx + 1}`).slice(0, 20);
+  ctx.fillText(title, W/2, H/2 - 4);
+
+  // Visual type hint icon
+  const visual = scene.visual || {};
+  const objects = visual.objects || [];
+  if (objects.length > 0) {
+    const kindIcons = {
+      'force-arrow': '→', 'wave': '∿', 'circuit': '⚡', 'atom': '⚛', 'molecule': '🔬',
+      'dna-helix': '🧬', 'graph-curve': '📈', 'cell': '🔴', 'pendulum': '🔄',
+      'bar-chart': '📊', 'geometric-shape': '△', 'lens': '🔍', 'orbit-system': '☀',
+      'food-chain': '🌱', 'matrix': '▦', 'venn-diagram': '◎', 'proof-step': '∴'
+    };
+    const icon = kindIcons[objects[0].kind] || '◆';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(icon, W/2, H/2 + 16);
+  }
+
+  // Scene number
+  ctx.fillStyle = th.accent;
+  ctx.font = '8px "Inter", sans-serif';
+  ctx.fillText(`${sceneIdx + 1}/${blueprint.scenes.length}`, W/2, H - 6);
+  ctx.textAlign = 'left';
+}
 
 // ── INIT ──
 // Scripts load synchronously — DOMContentLoaded has usually already fired.
